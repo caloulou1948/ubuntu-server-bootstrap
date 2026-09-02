@@ -17,6 +17,9 @@ for required_text in \
   'Install Nextcloud?' \
   'Install Frigate?' \
   'Install Shinobi?' \
+  'Configure local graphical boot with LightDM?' \
+  'graphical.target' \
+  'lightdm-gtk-greeter' \
   'required dependency' \
   'Preserving existing' \
   'docker compose' \

@@ -17,6 +17,7 @@ additional confirmation; they are never silently added.
 - Nextcloud
 - Frigate
 - Shinobi
+- Optional local graphical boot with LightDM
 - Timestamped logging and safe re-runs
 
 Logging and safe re-runs are always enabled. They are not a service selection.
@@ -70,6 +71,9 @@ sudo bash install.sh --dry-run
   installer asks for a trusted source CIDR; leaving it blank leaves port 3389
   closed.
 - No service is removed when it is later answered `no` during a re-run.
+- If local graphical boot is selected, LightDM is configured after the other
+  selected components. The installer asks before rebooting and does not enable
+  automatic user login.
 - The script never asks for camera passwords and does not configure a camera
   without an RTSP/ONVIF model and stream path.
 
@@ -89,6 +93,9 @@ Default local endpoints are:
 | Nextcloud | `http://127.0.0.1:8081` | Community Docker image with MariaDB and Redis. |
 | Shinobi | `http://127.0.0.1:8080` | Uses the official Shinobi container and persistent local data. |
 | Frigate | `http://127.0.0.1:8971` | Starts without a camera; add RTSP inputs later. |
+
+When local graphical boot is selected, the next reboot shows the LightDM
+graphical login screen. This is independent from XRDP remote login.
 
 The endpoints are intentionally local-only. From another computer, use an SSH
 tunnel, for example:

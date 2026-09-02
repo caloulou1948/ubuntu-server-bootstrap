@@ -4,7 +4,7 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 umask 077
 
-SCRIPT_VERSION="1.0.0"
+SCRIPT_VERSION="1.1.0"
 INSTALL_ROOT="${UBUNTU_BOOTSTRAP_ROOT:-/opt/ubuntu-headless-bootstrap}"
 SERVICE_ROOT="$INSTALL_ROOT/services"
 STATE_ROOT="$INSTALL_ROOT/state"
@@ -560,6 +560,19 @@ EOF
   compose_config_and_up "$service_dir"
 }
 
+install_gui_boot() {
+  log 'Configuring local graphical boot with LightDM.'
+  apt_install lightdm lightdm-gtk-greeter
+  run systemctl set-default graphical.target
+  run systemctl enable lightdm
+  log 'Local graphical boot is configured; the next reboot will show the graphical login screen.'
+  if prompt_yes_no 'Reboot now to activate local graphical boot?' n; then
+    run systemctl reboot
+  else
+    log 'Reboot skipped. Run sudo reboot when ready to start the graphical login screen.'
+  fi
+}
+
 write_selection_state() {
   if ((DRY_RUN || PLAN_ONLY)); then
     log 'Would write the non-secret selection state.'
@@ -577,6 +590,7 @@ ROCKETCHAT=$INSTALL_ROCKETCHAT
 NEXTCLOUD=$INSTALL_NEXTCLOUD
 FRIGATE=$INSTALL_FRIGATE
 SHINOBI=$INSTALL_SHINOBI
+GUI_BOOT=$INSTALL_GUI_BOOT
 EOF
   chmod 600 "$STATE_ROOT/last-selection.env"
 }
@@ -591,6 +605,7 @@ print_summary() {
   printf '  Nextcloud:           %s\n' "$INSTALL_NEXTCLOUD"
   printf '  Frigate:             %s\n' "$INSTALL_FRIGATE"
   printf '  Shinobi:             %s\n' "$INSTALL_SHINOBI"
+  printf '  Local graphical boot: %s\n' "$INSTALL_GUI_BOOT"
   printf '  Logging/safe reruns: enabled\n'
   printf '\n'
 }
@@ -615,6 +630,7 @@ main() {
   INSTALL_NEXTCLOUD=0
   INSTALL_FRIGATE=0
   INSTALL_SHINOBI=0
+  INSTALL_GUI_BOOT=0
   RDP_SOURCE_CIDR=''
 
   prompt_yes_no 'Install lightweight XFCE desktop?' n && INSTALL_XFCE=1 || true
@@ -625,12 +641,21 @@ main() {
   prompt_yes_no 'Install Nextcloud?' n && INSTALL_NEXTCLOUD=1 || true
   prompt_yes_no 'Install Frigate?' n && INSTALL_FRIGATE=1 || true
   prompt_yes_no 'Install Shinobi?' n && INSTALL_SHINOBI=1 || true
+  prompt_yes_no 'Configure local graphical boot with LightDM?' n && INSTALL_GUI_BOOT=1 || true
 
   if ((INSTALL_XRDP && !INSTALL_XFCE)); then
     if prompt_yes_no 'XRDP requires a desktop session. Install XFCE as a required dependency?' y; then
       INSTALL_XFCE=1
     else
       die 'XRDP was selected without its required XFCE dependency.'
+    fi
+  fi
+
+  if ((INSTALL_GUI_BOOT && !INSTALL_XFCE)); then
+    if prompt_yes_no 'Local graphical boot requires XFCE. Install XFCE as a required dependency?' y; then
+      INSTALL_XFCE=1
+    else
+      die 'Local graphical boot was selected without its required XFCE dependency.'
     fi
   fi
 
@@ -658,7 +683,7 @@ main() {
   print_summary
   prompt_yes_no 'Proceed with this plan?' n || { log 'Installation cancelled before host changes.'; exit 0; }
 
-  if ! ((INSTALL_XFCE || INSTALL_XRDP || INSTALL_DOCKER || INSTALL_SSH_UFW || INSTALL_ROCKETCHAT || INSTALL_NEXTCLOUD || INSTALL_FRIGATE || INSTALL_SHINOBI)); then
+  if ! ((INSTALL_XFCE || INSTALL_XRDP || INSTALL_DOCKER || INSTALL_SSH_UFW || INSTALL_ROCKETCHAT || INSTALL_NEXTCLOUD || INSTALL_FRIGATE || INSTALL_SHINOBI || INSTALL_GUI_BOOT)); then
     log 'No components were selected; no host changes will be made.'
     exit 0
   fi
@@ -674,6 +699,7 @@ main() {
   if ((INSTALL_NEXTCLOUD)); then install_nextcloud; fi
   if ((INSTALL_FRIGATE)); then install_frigate; fi
   if ((INSTALL_SHINOBI)); then install_shinobi; fi
+  if ((INSTALL_GUI_BOOT)); then install_gui_boot; fi
 
   log "Bootstrap completed for selected components."
   log "Installer log: $LOG_FILE"
