@@ -79,11 +79,12 @@ sudo bash install.sh --dry-run
   installer asks for a trusted source CIDR; leaving it blank leaves port 3389
   closed.
 - No service is removed when it is later answered `no` during a re-run.
-- If local graphical boot is selected, LightDM is configured after the other
-  selected components. XFCE uses LightDM; Ubuntu GNOME uses GDM3. The installer
-  explicitly selects the desktop session, verifies the desktop and D-Bus
-  session components, asks before rebooting, and does not enable automatic user
-  login. Only one desktop environment can be selected.
+- If local graphical boot is selected, the matching display manager is
+  configured after the other selected components. XFCE uses LightDM; Ubuntu
+  GNOME uses GDM3. The installer explicitly selects the desktop session,
+  disables a conflicting display manager, starts and verifies the selected
+  manager, verifies `graphical.target`, automatically reboots, and does not
+  enable automatic user login. Only one desktop environment can be selected.
 - The script never asks for camera passwords and does not configure a camera
   without an RTSP/ONVIF model and stream path.
 

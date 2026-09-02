@@ -4,7 +4,7 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 umask 077
 
-SCRIPT_VERSION="1.4.1"
+SCRIPT_VERSION="1.4.2"
 INSTALL_ROOT="${UBUNTU_BOOTSTRAP_ROOT:-/opt/ubuntu-headless-bootstrap}"
 SERVICE_ROOT="$INSTALL_ROOT/services"
 STATE_ROOT="$INSTALL_ROOT/state"
@@ -294,7 +294,7 @@ install_xfce() {
 
 install_gnome() {
   log 'Installing the standard Ubuntu GNOME desktop (minimal package set).'
-  apt_install ubuntu-desktop-minimal gdm3 xserver-xorg dbus-user-session
+  apt_install ubuntu-desktop-minimal ubuntu-session gdm3 xserver-xorg dbus-user-session
 }
 
 install_github_cli() {
@@ -369,6 +369,9 @@ verify_gnome_session() {
   for required_path in /usr/bin/gnome-session /usr/bin/dbus-run-session /usr/sbin/gdm3; do
     [[ -x "$required_path" || -f "$required_path" ]] || die "Required Ubuntu GNOME session component is missing: $required_path"
   done
+  if [[ ! -f /usr/share/wayland-sessions/ubuntu.desktop && ! -f /usr/share/xsessions/ubuntu.desktop ]]; then
+    die 'Required Ubuntu GNOME desktop session entry is missing.'
+  fi
   log 'Verified Ubuntu GNOME session components before enabling graphical boot.'
 }
 
@@ -690,9 +693,42 @@ EOF
   compose_config_and_up "$service_dir"
 }
 
+display_manager_installed() {
+  local manager="$1"
+  [[ -e "/etc/systemd/system/$manager.service" || \
+    -e "/lib/systemd/system/$manager.service" || \
+    -e "/usr/lib/systemd/system/$manager.service" ]]
+}
+
+disable_conflicting_display_manager() {
+  local manager="$1"
+  if ((DRY_RUN || PLAN_ONLY)); then
+    log "Would disable conflicting display manager $manager if installed."
+  elif display_manager_installed "$manager"; then
+    run systemctl disable --now "$manager.service"
+    log "Disabled conflicting display manager $manager."
+  fi
+}
+
+enable_and_verify_display_manager() {
+  local manager="$1"
+  run systemctl enable "$manager.service"
+  run systemctl restart "$manager.service"
+  if ((DRY_RUN || PLAN_ONLY)); then
+    run systemctl is-enabled --quiet "$manager.service"
+    run systemctl is-active --quiet "$manager.service"
+    log "Would verify that $manager is enabled and active."
+    return 0
+  fi
+  systemctl is-enabled --quiet "$manager.service" || die "$manager is not enabled for boot."
+  systemctl is-active --quiet "$manager.service" || die "$manager failed to start. Check: systemctl status $manager.service"
+  log "Verified $manager is enabled and active."
+}
+
 install_gui_boot() {
   log 'Configuring local graphical boot with the selected desktop.'
   if ((INSTALL_XFCE)); then
+    disable_conflicting_display_manager gdm3
     apt_install lightdm lightdm-gtk-greeter xserver-xorg
     configure_xfce_session
     verify_xfce_session
@@ -703,20 +739,23 @@ greeter-hide-users=false
 greeter-show-manual-login=true
 user-session=xfce
 EOF
-    run systemctl enable lightdm
+    enable_and_verify_display_manager lightdm
   else
     log 'Configuring local graphical boot with GDM3 for Ubuntu GNOME.'
+    disable_conflicting_display_manager lightdm
     apt_install gdm3 xserver-xorg
     verify_gnome_session
-    run systemctl enable gdm3
+    enable_and_verify_display_manager gdm3
   fi
   run systemctl set-default graphical.target
-  log 'Local graphical boot is configured; the next reboot will show the graphical login screen.'
-  if prompt_yes_no 'Reboot now to activate local graphical boot?' n; then
-    run systemctl reboot
+  if ((DRY_RUN || PLAN_ONLY)); then
+    run systemctl get-default
   else
-    log 'Reboot skipped. Run sudo reboot when ready to start the graphical login screen.'
+    [[ "$(systemctl get-default)" == graphical.target ]] || die 'graphical.target is not the system default target.'
+    log 'Verified graphical.target is the system default target.'
   fi
+  log 'Local graphical boot is verified; rebooting now to start the graphical login screen.'
+  run systemctl reboot
 }
 
 write_selection_state() {
