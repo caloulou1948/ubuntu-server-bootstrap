@@ -4,7 +4,7 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 umask 077
 
-SCRIPT_VERSION="1.1.0"
+SCRIPT_VERSION="1.2.0"
 INSTALL_ROOT="${UBUNTU_BOOTSTRAP_ROOT:-/opt/ubuntu-headless-bootstrap}"
 SERVICE_ROOT="$INSTALL_ROOT/services"
 STATE_ROOT="$INSTALL_ROOT/state"
@@ -241,28 +241,50 @@ generate_hex_secret() {
 
 install_xfce() {
   log 'Installing XFCE desktop packages.'
-  apt_install xfce4 xfce4-goodies dbus-x11
+  apt_install xfce4 xfce4-session xfce4-goodies dbus-user-session dbus-x11
+}
+
+configure_xfce_session() {
+  if ((DRY_RUN || PLAN_ONLY)); then
+    log "Would ensure XFCE session startup for $TARGET_USER."
+    return 0
+  fi
+  if [[ "$TARGET_USER" == login-user-detected-at-install-time ]] || ! id "$TARGET_USER" >/dev/null 2>&1; then
+    die "Could not configure XFCE session because the target login user is unavailable."
+  fi
+
+  local target_home session_file
+  target_home="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
+  [[ -n "$target_home" && -d "$target_home" ]] || die "Could not find the home directory for $TARGET_USER."
+  session_file="$target_home/.xsession"
+  if [[ ! -e "$session_file" ]]; then
+    printf '# Managed by ubuntu-server-bootstrap.\nexec dbus-run-session -- startxfce4\n' >"$session_file"
+    chown "$TARGET_USER:$TARGET_USER" "$session_file"
+    chmod 600 "$session_file"
+    log "Created XFCE session file for $TARGET_USER."
+  else
+    log "Preserving existing XFCE session file for $TARGET_USER."
+  fi
+}
+
+verify_xfce_session() {
+  if ((DRY_RUN || PLAN_ONLY)); then
+    log 'Would verify XFCE, D-Bus, and the XFCE LightDM session entry.'
+    return 0
+  fi
+  local required_path
+  for required_path in /usr/bin/startxfce4 /usr/bin/dbus-run-session /usr/share/xsessions/xfce.desktop; do
+    [[ -x "$required_path" || -f "$required_path" ]] || die "Required XFCE session component is missing: $required_path"
+  done
+  log 'Verified XFCE session components before enabling graphical boot.'
 }
 
 install_xrdp() {
   log 'Installing and enabling XRDP.'
   apt_install xrdp
   run systemctl enable --now xrdp
-  if [[ "$TARGET_USER" != login-user-detected-at-install-time ]] && id "$TARGET_USER" >/dev/null 2>&1; then
-    local target_home
-    target_home="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
-    if [[ -n "$target_home" && ! -e "$target_home/.xsession" ]]; then
-      if ((DRY_RUN || PLAN_ONLY)); then
-        log "Would create XFCE session file for $TARGET_USER."
-      else
-        printf 'startxfce4\n' >"$target_home/.xsession"
-        chown "$TARGET_USER:$TARGET_USER" "$target_home/.xsession"
-        chmod 600 "$target_home/.xsession"
-      fi
-    else
-      log "Preserving existing XRDP session file for $TARGET_USER."
-    fi
-  fi
+  configure_xfce_session
+  verify_xfce_session
 }
 
 install_ssh_firewall() {
@@ -562,7 +584,16 @@ EOF
 
 install_gui_boot() {
   log 'Configuring local graphical boot with LightDM.'
-  apt_install lightdm lightdm-gtk-greeter
+  apt_install lightdm lightdm-gtk-greeter xserver-xorg
+  configure_xfce_session
+  verify_xfce_session
+  write_file_if_missing /etc/lightdm/lightdm.conf.d/60-ubuntu-server-bootstrap-xfce.conf 0644 <<'EOF'
+[Seat:*]
+greeter-session=lightdm-gtk-greeter
+greeter-hide-users=false
+greeter-show-manual-login=true
+user-session=xfce
+EOF
   run systemctl set-default graphical.target
   run systemctl enable lightdm
   log 'Local graphical boot is configured; the next reboot will show the graphical login screen.'

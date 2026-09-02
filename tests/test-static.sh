@@ -20,6 +20,9 @@ for required_text in \
   'Configure local graphical boot with LightDM?' \
   'graphical.target' \
   'lightdm-gtk-greeter' \
+  'user-session=xfce' \
+  'dbus-run-session -- startxfce4' \
+  'Verified XFCE session components' \
   'required dependency' \
   'Preserving existing' \
   'docker compose' \

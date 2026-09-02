@@ -72,8 +72,9 @@ sudo bash install.sh --dry-run
   closed.
 - No service is removed when it is later answered `no` during a re-run.
 - If local graphical boot is selected, LightDM is configured after the other
-  selected components. The installer asks before rebooting and does not enable
-  automatic user login.
+  selected components. The installer explicitly selects the XFCE session,
+  verifies the XFCE and D-Bus session components, asks before rebooting, and
+  does not enable automatic user login.
 - The script never asks for camera passwords and does not configure a camera
   without an RTSP/ONVIF model and stream path.
 
