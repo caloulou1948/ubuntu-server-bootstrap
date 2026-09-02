@@ -4,7 +4,7 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 umask 077
 
-SCRIPT_VERSION="1.2.0"
+SCRIPT_VERSION="1.3.0"
 INSTALL_ROOT="${UBUNTU_BOOTSTRAP_ROOT:-/opt/ubuntu-headless-bootstrap}"
 SERVICE_ROOT="$INSTALL_ROOT/services"
 STATE_ROOT="$INSTALL_ROOT/state"
@@ -149,6 +149,54 @@ prompt_value() {
   printf -v "$variable_name" '%s' "$answer"
 }
 
+prompt_desktop_choice() {
+  local default_choice="${1:-3}"
+  local prompt_label="${2:-Choose the desktop environment}"
+  local answer
+  while true; do
+    printf '\n%s:\n' "$prompt_label"
+    printf '  1) XFCE lightweight\n'
+    printf '  2) Standard Ubuntu GNOME desktop\n'
+    printf '  3) No desktop\n'
+    read -r -p "Desktop choice [1-3, default $default_choice]: " answer || die 'Input ended while choosing the desktop environment.'
+    if [[ -z "$answer" ]]; then
+      answer="$default_choice"
+    fi
+    case "$answer" in
+      1)
+        DESKTOP_CHOICE='xfce'
+        INSTALL_XFCE=1
+        INSTALL_GNOME=0
+        return 0
+        ;;
+      2)
+        DESKTOP_CHOICE='gnome'
+        INSTALL_XFCE=0
+        INSTALL_GNOME=1
+        return 0
+        ;;
+      3)
+        DESKTOP_CHOICE='none'
+        INSTALL_XFCE=0
+        INSTALL_GNOME=0
+        return 0
+        ;;
+      *)
+        printf 'Please choose 1, 2, or 3.\n'
+        ;;
+    esac
+  done
+}
+
+desktop_label() {
+  case "$DESKTOP_CHOICE" in
+    xfce) printf 'XFCE lightweight' ;;
+    gnome) printf 'Standard Ubuntu GNOME' ;;
+    none) printf 'none' ;;
+    *) printf 'unknown' ;;
+  esac
+}
+
 command_exists() {
   command -v "$1" >/dev/null 2>&1
 }
@@ -244,6 +292,11 @@ install_xfce() {
   apt_install xfce4 xfce4-session xfce4-goodies dbus-user-session dbus-x11
 }
 
+install_gnome() {
+  log 'Installing the standard Ubuntu GNOME desktop (minimal package set).'
+  apt_install ubuntu-desktop-minimal gdm3 xserver-xorg dbus-user-session
+}
+
 configure_xfce_session() {
   if ((DRY_RUN || PLAN_ONLY)); then
     log "Would ensure XFCE session startup for $TARGET_USER."
@@ -279,12 +332,62 @@ verify_xfce_session() {
   log 'Verified XFCE session components before enabling graphical boot.'
 }
 
+configure_gnome_session() {
+  if ((DRY_RUN || PLAN_ONLY)); then
+    log "Would ensure Ubuntu GNOME session startup for $TARGET_USER."
+    return 0
+  fi
+  if [[ "$TARGET_USER" == login-user-detected-at-install-time ]] || ! id "$TARGET_USER" >/dev/null 2>&1; then
+    die 'Could not configure Ubuntu GNOME session because the target login user is unavailable.'
+  fi
+
+  local target_home session_file
+  target_home="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
+  [[ -n "$target_home" && -d "$target_home" ]] || die "Could not find the home directory for $TARGET_USER."
+  session_file="$target_home/.xsession"
+  if [[ ! -e "$session_file" ]]; then
+    printf '# Managed by ubuntu-server-bootstrap.\nexport GNOME_SHELL_SESSION_MODE=ubuntu\nexport XDG_CURRENT_DESKTOP=ubuntu:GNOME\nexec dbus-run-session -- gnome-session --session=ubuntu\n' >"$session_file"
+    chown "$TARGET_USER:$TARGET_USER" "$session_file"
+    chmod 600 "$session_file"
+    log "Created Ubuntu GNOME session file for $TARGET_USER."
+  else
+    log "Preserving existing desktop session file for $TARGET_USER."
+  fi
+}
+
+verify_gnome_session() {
+  if ((DRY_RUN || PLAN_ONLY)); then
+    log 'Would verify GNOME, D-Bus, and the GDM session components.'
+    return 0
+  fi
+  local required_path
+  for required_path in /usr/bin/gnome-session /usr/bin/dbus-run-session /usr/sbin/gdm3; do
+    [[ -x "$required_path" || -f "$required_path" ]] || die "Required Ubuntu GNOME session component is missing: $required_path"
+  done
+  log 'Verified Ubuntu GNOME session components before enabling graphical boot.'
+}
+
+configure_selected_remote_session() {
+  case "$DESKTOP_CHOICE" in
+    xfce)
+      configure_xfce_session
+      verify_xfce_session
+      ;;
+    gnome)
+      configure_gnome_session
+      verify_gnome_session
+      ;;
+    *)
+      die 'A desktop environment must be selected before configuring XRDP.'
+      ;;
+  esac
+}
+
 install_xrdp() {
   log 'Installing and enabling XRDP.'
-  apt_install xrdp
+  apt_install xrdp xorgxrdp
   run systemctl enable --now xrdp
-  configure_xfce_session
-  verify_xfce_session
+  configure_selected_remote_session
 }
 
 install_ssh_firewall() {
@@ -583,19 +686,26 @@ EOF
 }
 
 install_gui_boot() {
-  log 'Configuring local graphical boot with LightDM.'
-  apt_install lightdm lightdm-gtk-greeter xserver-xorg
-  configure_xfce_session
-  verify_xfce_session
-  write_file_if_missing /etc/lightdm/lightdm.conf.d/60-ubuntu-server-bootstrap-xfce.conf 0644 <<'EOF'
+  log 'Configuring local graphical boot with the selected desktop.'
+  if ((INSTALL_XFCE)); then
+    apt_install lightdm lightdm-gtk-greeter xserver-xorg
+    configure_xfce_session
+    verify_xfce_session
+    write_file_if_missing /etc/lightdm/lightdm.conf.d/60-ubuntu-server-bootstrap-xfce.conf 0644 <<'EOF'
 [Seat:*]
 greeter-session=lightdm-gtk-greeter
 greeter-hide-users=false
 greeter-show-manual-login=true
 user-session=xfce
 EOF
+    run systemctl enable lightdm
+  else
+    log 'Configuring local graphical boot with GDM3 for Ubuntu GNOME.'
+    apt_install gdm3 xserver-xorg
+    verify_gnome_session
+    run systemctl enable gdm3
+  fi
   run systemctl set-default graphical.target
-  run systemctl enable lightdm
   log 'Local graphical boot is configured; the next reboot will show the graphical login screen.'
   if prompt_yes_no 'Reboot now to activate local graphical boot?' n; then
     run systemctl reboot
@@ -613,7 +723,9 @@ write_selection_state() {
   cat >"$STATE_ROOT/last-selection.env" <<EOF
 INSTALLER_VERSION=$SCRIPT_VERSION
 RUN_UTC=$RUN_STAMP
+DESKTOP=$DESKTOP_CHOICE
 XFCE=$INSTALL_XFCE
+GNOME=$INSTALL_GNOME
 XRDP=$INSTALL_XRDP
 DOCKER=$INSTALL_DOCKER
 SSH_UFW=$INSTALL_SSH_UFW
@@ -628,7 +740,9 @@ EOF
 
 print_summary() {
   printf '\nSelected installation plan:\n'
+  printf '  Desktop environment: %s\n' "$(desktop_label)"
   printf '  XFCE desktop:       %s\n' "$INSTALL_XFCE"
+  printf '  Ubuntu GNOME:       %s\n' "$INSTALL_GNOME"
   printf '  XRDP:                %s\n' "$INSTALL_XRDP"
   printf '  Docker + Compose:    %s\n' "$INSTALL_DOCKER"
   printf '  SSH + UFW basics:    %s\n' "$INSTALL_SSH_UFW"
@@ -654,6 +768,8 @@ main() {
   printf 'The installer will ask for each component. Existing data/configuration is preserved.\n\n'
 
   INSTALL_XFCE=0
+  INSTALL_GNOME=0
+  DESKTOP_CHOICE='none'
   INSTALL_XRDP=0
   INSTALL_DOCKER=0
   INSTALL_SSH_UFW=0
@@ -664,7 +780,7 @@ main() {
   INSTALL_GUI_BOOT=0
   RDP_SOURCE_CIDR=''
 
-  prompt_yes_no 'Install lightweight XFCE desktop?' n && INSTALL_XFCE=1 || true
+  prompt_desktop_choice 3 'Choose the desktop environment'
   prompt_yes_no 'Install XRDP remote desktop access?' n && INSTALL_XRDP=1 || true
   prompt_yes_no 'Install Docker Engine and Docker Compose v2?' n && INSTALL_DOCKER=1 || true
   prompt_yes_no 'Install OpenSSH server and UFW firewall basics?' n && INSTALL_SSH_UFW=1 || true
@@ -672,22 +788,14 @@ main() {
   prompt_yes_no 'Install Nextcloud?' n && INSTALL_NEXTCLOUD=1 || true
   prompt_yes_no 'Install Frigate?' n && INSTALL_FRIGATE=1 || true
   prompt_yes_no 'Install Shinobi?' n && INSTALL_SHINOBI=1 || true
-  prompt_yes_no 'Configure local graphical boot with LightDM?' n && INSTALL_GUI_BOOT=1 || true
+  prompt_yes_no 'Configure local graphical boot with the selected desktop?' n && INSTALL_GUI_BOOT=1 || true
 
-  if ((INSTALL_XRDP && !INSTALL_XFCE)); then
-    if prompt_yes_no 'XRDP requires a desktop session. Install XFCE as a required dependency?' y; then
-      INSTALL_XFCE=1
-    else
-      die 'XRDP was selected without its required XFCE dependency.'
-    fi
+  if ((INSTALL_XRDP)) && [[ "$DESKTOP_CHOICE" == none ]]; then
+    prompt_desktop_choice 1 'XRDP requires a desktop session. Choose the required desktop'
   fi
 
-  if ((INSTALL_GUI_BOOT && !INSTALL_XFCE)); then
-    if prompt_yes_no 'Local graphical boot requires XFCE. Install XFCE as a required dependency?' y; then
-      INSTALL_XFCE=1
-    else
-      die 'Local graphical boot was selected without its required XFCE dependency.'
-    fi
+  if ((INSTALL_GUI_BOOT)) && [[ "$DESKTOP_CHOICE" == none ]]; then
+    prompt_desktop_choice 1 'Local graphical boot requires a desktop. Choose the required desktop'
   fi
 
   if any_application_selected && ((INSTALL_DOCKER == 0)); then
@@ -714,7 +822,7 @@ main() {
   print_summary
   prompt_yes_no 'Proceed with this plan?' n || { log 'Installation cancelled before host changes.'; exit 0; }
 
-  if ! ((INSTALL_XFCE || INSTALL_XRDP || INSTALL_DOCKER || INSTALL_SSH_UFW || INSTALL_ROCKETCHAT || INSTALL_NEXTCLOUD || INSTALL_FRIGATE || INSTALL_SHINOBI || INSTALL_GUI_BOOT)); then
+  if ! ((INSTALL_XFCE || INSTALL_GNOME || INSTALL_XRDP || INSTALL_DOCKER || INSTALL_SSH_UFW || INSTALL_ROCKETCHAT || INSTALL_NEXTCLOUD || INSTALL_FRIGATE || INSTALL_SHINOBI || INSTALL_GUI_BOOT)); then
     log 'No components were selected; no host changes will be made.'
     exit 0
   fi
@@ -723,6 +831,7 @@ main() {
   write_selection_state
 
   if ((INSTALL_XFCE)); then install_xfce; fi
+  if ((INSTALL_GNOME)); then install_gnome; fi
   if ((INSTALL_XRDP)); then install_xrdp; fi
   if ((INSTALL_SSH_UFW)); then install_ssh_firewall; fi
   if ((INSTALL_DOCKER)); then install_docker; fi

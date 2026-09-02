@@ -9,7 +9,12 @@ installer="$project_root/install.sh"
 bash -n "$installer"
 
 for required_text in \
-  'Install lightweight XFCE desktop?' \
+  'Choose the desktop environment' \
+  '1) XFCE lightweight' \
+  '2) Standard Ubuntu GNOME desktop' \
+  '3) No desktop' \
+  'ubuntu-desktop-minimal' \
+  'gdm3' \
   'Install XRDP remote desktop access?' \
   'Install Docker Engine and Docker Compose v2?' \
   'Install OpenSSH server and UFW firewall basics?' \
@@ -17,7 +22,7 @@ for required_text in \
   'Install Nextcloud?' \
   'Install Frigate?' \
   'Install Shinobi?' \
-  'Configure local graphical boot with LightDM?' \
+  'Configure local graphical boot with the selected desktop?' \
   'graphical.target' \
   'lightdm-gtk-greeter' \
   'user-session=xfce' \

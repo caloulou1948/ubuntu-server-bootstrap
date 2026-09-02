@@ -9,7 +9,7 @@ additional confirmation; they are never silently added.
 ## Included options
 
 - Ubuntu version detection
-- Lightweight XFCE desktop
+- Choose one desktop: lightweight XFCE, standard Ubuntu GNOME, or no desktop
 - XRDP remote desktop access
 - Docker Engine and Docker Compose v2
 - OpenSSH and UFW basics
@@ -17,7 +17,7 @@ additional confirmation; they are never silently added.
 - Nextcloud
 - Frigate
 - Shinobi
-- Optional local graphical boot with LightDM
+- Optional local graphical boot with the selected desktop
 - Timestamped logging and safe re-runs
 
 Logging and safe re-runs are always enabled. They are not a service selection.
@@ -72,9 +72,10 @@ sudo bash install.sh --dry-run
   closed.
 - No service is removed when it is later answered `no` during a re-run.
 - If local graphical boot is selected, LightDM is configured after the other
-  selected components. The installer explicitly selects the XFCE session,
-  verifies the XFCE and D-Bus session components, asks before rebooting, and
-  does not enable automatic user login.
+  selected components. XFCE uses LightDM; Ubuntu GNOME uses GDM3. The installer
+  explicitly selects the desktop session, verifies the desktop and D-Bus
+  session components, asks before rebooting, and does not enable automatic user
+  login. Only one desktop environment can be selected.
 - The script never asks for camera passwords and does not configure a camera
   without an RTSP/ONVIF model and stream path.
 
@@ -95,8 +96,9 @@ Default local endpoints are:
 | Shinobi | `http://127.0.0.1:8080` | Uses the official Shinobi container and persistent local data. |
 | Frigate | `http://127.0.0.1:8971` | Starts without a camera; add RTSP inputs later. |
 
-When local graphical boot is selected, the next reboot shows the LightDM
-graphical login screen. This is independent from XRDP remote login.
+When local graphical boot is selected, the next reboot shows the selected
+desktop's graphical login screen. XFCE uses LightDM and Ubuntu GNOME uses GDM3;
+this is independent from XRDP remote login.
 
 The endpoints are intentionally local-only. From another computer, use an SSH
 tunnel, for example:
