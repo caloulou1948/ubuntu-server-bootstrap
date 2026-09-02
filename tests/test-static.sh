@@ -13,6 +13,8 @@ for required_text in \
   '1) XFCE lightweight' \
   '2) Standard Ubuntu GNOME desktop' \
   '3) No desktop' \
+  'Install GitHub CLI (gh)?' \
+  'apt_install git gh' \
   'ubuntu-desktop-minimal' \
   'gdm3' \
   'Install XRDP remote desktop access?' \

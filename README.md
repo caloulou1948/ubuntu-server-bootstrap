@@ -10,6 +10,7 @@ additional confirmation; they are never silently added.
 
 - Ubuntu version detection
 - Choose one desktop: lightweight XFCE, standard Ubuntu GNOME, or no desktop
+- GitHub CLI (`gh`) and Git
 - XRDP remote desktop access
 - Docker Engine and Docker Compose v2
 - OpenSSH and UFW basics
@@ -25,9 +26,12 @@ Logging and safe re-runs are always enabled. They are not a service selection.
 ## Run
 
 Because this repository is private, clone it once with an authenticated GitHub
-CLI session and review the script:
+CLI session. On a completely new Ubuntu Server, install and authenticate the
+CLI first:
 
 ```bash
+sudo apt-get update && sudo apt-get install -y gh git
+gh auth login
 gh repo clone caloulou1948/ubuntu-server-bootstrap ~/ubuntu-server-bootstrap
 cd ~/ubuntu-server-bootstrap
 less install.sh
@@ -42,6 +46,10 @@ sudo ~/ubuntu-server-bootstrap/install.sh
 
 The installer itself asks for a fixed Rocket.Chat release tag and preserves
 that selection in its local service configuration.
+
+The installer also offers GitHub CLI as a selectable component. It defaults to
+yes because this private-repository workflow uses `gh`; answer `no` if that
+server should not have GitHub CLI installed.
 
 The script also supports a non-mutating plan mode:
 

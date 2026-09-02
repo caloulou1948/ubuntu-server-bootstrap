@@ -4,7 +4,7 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 umask 077
 
-SCRIPT_VERSION="1.3.0"
+SCRIPT_VERSION="1.4.0"
 INSTALL_ROOT="${UBUNTU_BOOTSTRAP_ROOT:-/opt/ubuntu-headless-bootstrap}"
 SERVICE_ROOT="$INSTALL_ROOT/services"
 STATE_ROOT="$INSTALL_ROOT/state"
@@ -295,6 +295,11 @@ install_xfce() {
 install_gnome() {
   log 'Installing the standard Ubuntu GNOME desktop (minimal package set).'
   apt_install ubuntu-desktop-minimal gdm3 xserver-xorg dbus-user-session
+}
+
+install_github_cli() {
+  log 'Installing GitHub CLI and Git.'
+  apt_install git gh
 }
 
 configure_xfce_session() {
@@ -724,6 +729,7 @@ write_selection_state() {
 INSTALLER_VERSION=$SCRIPT_VERSION
 RUN_UTC=$RUN_STAMP
 DESKTOP=$DESKTOP_CHOICE
+GITHUB_CLI=$INSTALL_GITHUB_CLI
 XFCE=$INSTALL_XFCE
 GNOME=$INSTALL_GNOME
 XRDP=$INSTALL_XRDP
@@ -741,6 +747,7 @@ EOF
 print_summary() {
   printf '\nSelected installation plan:\n'
   printf '  Desktop environment: %s\n' "$(desktop_label)"
+  printf '  GitHub CLI (gh):    %s\n' "$INSTALL_GITHUB_CLI"
   printf '  XFCE desktop:       %s\n' "$INSTALL_XFCE"
   printf '  Ubuntu GNOME:       %s\n' "$INSTALL_GNOME"
   printf '  XRDP:                %s\n' "$INSTALL_XRDP"
@@ -770,6 +777,7 @@ main() {
   INSTALL_XFCE=0
   INSTALL_GNOME=0
   DESKTOP_CHOICE='none'
+  INSTALL_GITHUB_CLI=0
   INSTALL_XRDP=0
   INSTALL_DOCKER=0
   INSTALL_SSH_UFW=0
@@ -781,6 +789,7 @@ main() {
   RDP_SOURCE_CIDR=''
 
   prompt_desktop_choice 3 'Choose the desktop environment'
+  prompt_yes_no 'Install GitHub CLI (gh)?' y && INSTALL_GITHUB_CLI=1 || true
   prompt_yes_no 'Install XRDP remote desktop access?' n && INSTALL_XRDP=1 || true
   prompt_yes_no 'Install Docker Engine and Docker Compose v2?' n && INSTALL_DOCKER=1 || true
   prompt_yes_no 'Install OpenSSH server and UFW firewall basics?' n && INSTALL_SSH_UFW=1 || true
@@ -822,7 +831,7 @@ main() {
   print_summary
   prompt_yes_no 'Proceed with this plan?' n || { log 'Installation cancelled before host changes.'; exit 0; }
 
-  if ! ((INSTALL_XFCE || INSTALL_GNOME || INSTALL_XRDP || INSTALL_DOCKER || INSTALL_SSH_UFW || INSTALL_ROCKETCHAT || INSTALL_NEXTCLOUD || INSTALL_FRIGATE || INSTALL_SHINOBI || INSTALL_GUI_BOOT)); then
+  if ! ((INSTALL_XFCE || INSTALL_GNOME || INSTALL_GITHUB_CLI || INSTALL_XRDP || INSTALL_DOCKER || INSTALL_SSH_UFW || INSTALL_ROCKETCHAT || INSTALL_NEXTCLOUD || INSTALL_FRIGATE || INSTALL_SHINOBI || INSTALL_GUI_BOOT)); then
     log 'No components were selected; no host changes will be made.'
     exit 0
   fi
@@ -830,6 +839,7 @@ main() {
   prepare_service_root
   write_selection_state
 
+  if ((INSTALL_GITHUB_CLI)); then install_github_cli; fi
   if ((INSTALL_XFCE)); then install_xfce; fi
   if ((INSTALL_GNOME)); then install_gnome; fi
   if ((INSTALL_XRDP)); then install_xrdp; fi
