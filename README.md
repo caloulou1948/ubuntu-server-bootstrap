@@ -30,13 +30,13 @@ CLI session and review the script:
 gh repo clone caloulou1948/ubuntu-server-bootstrap ~/ubuntu-server-bootstrap
 cd ~/ubuntu-server-bootstrap
 less install.sh
-sudo bash install.sh
+sudo ./install.sh
 ```
 
 After that, the short repeat command is:
 
 ```bash
-sudo bash ~/ubuntu-server-bootstrap/install.sh
+sudo ~/ubuntu-server-bootstrap/install.sh
 ```
 
 The installer itself asks for a fixed Rocket.Chat release tag and preserves
