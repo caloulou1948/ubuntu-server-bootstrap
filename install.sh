@@ -4,7 +4,7 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 umask 077
 
-SCRIPT_VERSION="1.4.2"
+SCRIPT_VERSION="1.4.3"
 INSTALL_ROOT="${UBUNTU_BOOTSTRAP_ROOT:-/opt/ubuntu-headless-bootstrap}"
 SERVICE_ROOT="$INSTALL_ROOT/services"
 STATE_ROOT="$INSTALL_ROOT/state"
@@ -725,7 +725,7 @@ enable_and_verify_display_manager() {
   log "Verified $manager is enabled and active."
 }
 
-install_gui_boot() {
+configure_gui_boot() {
   log 'Configuring local graphical boot with the selected desktop.'
   if ((INSTALL_XFCE)); then
     disable_conflicting_display_manager gdm3
@@ -754,7 +754,11 @@ EOF
     [[ "$(systemctl get-default)" == graphical.target ]] || die 'graphical.target is not the system default target.'
     log 'Verified graphical.target is the system default target.'
   fi
-  log 'Local graphical boot is verified; rebooting now to start the graphical login screen.'
+  log 'Local graphical boot is configured and verified; reboot will occur after selected components finish.'
+}
+
+reboot_after_gui_boot() {
+  log 'All selected components finished; rebooting now to start the graphical login screen.'
   run systemctl reboot
 }
 
@@ -878,9 +882,10 @@ main() {
   prepare_service_root
   write_selection_state
 
-  if ((INSTALL_GITHUB_CLI)); then install_github_cli; fi
   if ((INSTALL_XFCE)); then install_xfce; fi
   if ((INSTALL_GNOME)); then install_gnome; fi
+  if ((INSTALL_GUI_BOOT)); then configure_gui_boot; fi
+  if ((INSTALL_GITHUB_CLI)); then install_github_cli; fi
   if ((INSTALL_XRDP)); then install_xrdp; fi
   if ((INSTALL_SSH_UFW)); then install_ssh_firewall; fi
   if ((INSTALL_DOCKER)); then install_docker; fi
@@ -888,7 +893,6 @@ main() {
   if ((INSTALL_NEXTCLOUD)); then install_nextcloud; fi
   if ((INSTALL_FRIGATE)); then install_frigate; fi
   if ((INSTALL_SHINOBI)); then install_shinobi; fi
-  if ((INSTALL_GUI_BOOT)); then install_gui_boot; fi
 
   log "Bootstrap completed for selected components."
   log "Installer log: $LOG_FILE"
@@ -897,6 +901,7 @@ main() {
   if ((INSTALL_SHINOBI)); then log 'Shinobi:     http://127.0.0.1:8080'; fi
   if ((INSTALL_FRIGATE)); then log 'Frigate:     http://127.0.0.1:8971'; fi
   log 'No camera was configured; RTSP/ONVIF details are required for that later step.'
+  if ((INSTALL_GUI_BOOT)); then reboot_after_gui_boot; fi
 }
 
 main "$@"

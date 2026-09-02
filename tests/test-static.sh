@@ -32,6 +32,8 @@ for required_text in \
   'dbus-run-session -- startxfce4' \
   'Verified XFCE session components' \
   'disable_conflicting_display_manager' \
+  'configure_gui_boot' \
+  'reboot_after_gui_boot' \
   'systemctl restart' \
   'systemctl is-enabled --quiet' \
   'systemctl is-active --quiet' \
