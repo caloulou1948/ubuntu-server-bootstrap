@@ -23,14 +23,24 @@ Logging and safe re-runs are always enabled. They are not a service selection.
 
 ## Run
 
-On the Ubuntu Server, download a pinned release or commit from the GitHub
-repository and review it before running it:
+Because this repository is private, clone it once with an authenticated GitHub
+CLI session and review the script:
 
 ```bash
-curl -fL -o install.sh https://raw.githubusercontent.com/OWNER/REPOSITORY/COMMIT/install.sh
+gh repo clone caloulou1948/ubuntu-server-bootstrap ~/ubuntu-server-bootstrap
+cd ~/ubuntu-server-bootstrap
 less install.sh
 sudo bash install.sh
 ```
+
+After that, the short repeat command is:
+
+```bash
+sudo bash ~/ubuntu-server-bootstrap/install.sh
+```
+
+The installer itself asks for a fixed Rocket.Chat release tag and preserves
+that selection in its local service configuration.
 
 The script also supports a non-mutating plan mode:
 
