@@ -33,6 +33,7 @@ for required_text in \
   'required dependency' \
   'Preserving existing' \
   'docker compose' \
+  'run_in_dir "$service_dir" docker compose' \
   'config -q'; do
   rg -Fq "$required_text" "$installer" || {
     echo "missing required installer marker: $required_text" >&2

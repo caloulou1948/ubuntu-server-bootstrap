@@ -4,7 +4,7 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 umask 077
 
-SCRIPT_VERSION="1.4.0"
+SCRIPT_VERSION="1.4.1"
 INSTALL_ROOT="${UBUNTU_BOOTSTRAP_ROOT:-/opt/ubuntu-headless-bootstrap}"
 SERVICE_ROOT="$INSTALL_ROOT/services"
 STATE_ROOT="$INSTALL_ROOT/state"
@@ -466,21 +466,21 @@ compose_config_and_up() {
   shift
   log "Validating Compose configuration in $service_dir."
   if (($# > 0)); then
-    run docker compose --project-directory "$service_dir" "$@" config -q
+    run_in_dir "$service_dir" docker compose --project-directory "$service_dir" "$@" config -q
   else
-    run docker compose --project-directory "$service_dir" config -q
+    run_in_dir "$service_dir" docker compose --project-directory "$service_dir" config -q
   fi
   log "Starting selected Compose project in $service_dir."
   if (($# > 0)); then
-    run docker compose --project-directory "$service_dir" "$@" up -d
+    run_in_dir "$service_dir" docker compose --project-directory "$service_dir" "$@" up -d
   else
-    run docker compose --project-directory "$service_dir" up -d
+    run_in_dir "$service_dir" docker compose --project-directory "$service_dir" up -d
   fi
   log "Compose status for $service_dir:"
   if (($# > 0)); then
-    run docker compose --project-directory "$service_dir" "$@" ps
+    run_in_dir "$service_dir" docker compose --project-directory "$service_dir" "$@" ps
   else
-    run docker compose --project-directory "$service_dir" ps
+    run_in_dir "$service_dir" docker compose --project-directory "$service_dir" ps
   fi
 }
 
