@@ -9,7 +9,7 @@ additional confirmation; they are never silently added.
 ## Included options
 
 - Ubuntu version detection
-- Choose one desktop: lightweight XFCE, standard Ubuntu GNOME, or no desktop
+- Choose one desktop: standard Ubuntu GNOME, lightweight XFCE, or no desktop
 - GitHub CLI (`gh`) and Git
 - XRDP remote desktop access
 - Docker Engine and Docker Compose v2

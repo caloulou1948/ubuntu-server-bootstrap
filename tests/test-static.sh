@@ -10,8 +10,8 @@ bash -n "$installer"
 
 for required_text in \
   'Choose the desktop environment' \
-  '1) XFCE lightweight' \
-  '2) Standard Ubuntu GNOME desktop' \
+  '1) Standard Ubuntu GNOME desktop' \
+  '2) XFCE lightweight' \
   '3) No desktop' \
   'Install GitHub CLI (gh)?' \
   'apt_install git gh' \

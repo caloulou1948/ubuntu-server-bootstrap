@@ -4,7 +4,7 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 umask 077
 
-SCRIPT_VERSION="1.4.5"
+SCRIPT_VERSION="1.4.6"
 INSTALL_ROOT="${UBUNTU_BOOTSTRAP_ROOT:-/opt/ubuntu-headless-bootstrap}"
 SERVICE_ROOT="$INSTALL_ROOT/services"
 STATE_ROOT="$INSTALL_ROOT/state"
@@ -155,8 +155,8 @@ prompt_desktop_choice() {
   local answer
   while true; do
     printf '\n%s:\n' "$prompt_label"
-    printf '  1) XFCE lightweight\n'
-    printf '  2) Standard Ubuntu GNOME desktop\n'
+    printf '  1) Standard Ubuntu GNOME desktop\n'
+    printf '  2) XFCE lightweight\n'
     printf '  3) No desktop\n'
     read -r -p "Desktop choice [1-3, default $default_choice]: " answer || die 'Input ended while choosing the desktop environment.'
     if [[ -z "$answer" ]]; then
@@ -164,15 +164,15 @@ prompt_desktop_choice() {
     fi
     case "$answer" in
       1)
-        DESKTOP_CHOICE='xfce'
-        INSTALL_XFCE=1
-        INSTALL_GNOME=0
-        return 0
-        ;;
-      2)
         DESKTOP_CHOICE='gnome'
         INSTALL_XFCE=0
         INSTALL_GNOME=1
+        return 0
+        ;;
+      2)
+        DESKTOP_CHOICE='xfce'
+        INSTALL_XFCE=1
+        INSTALL_GNOME=0
         return 0
         ;;
       3)
