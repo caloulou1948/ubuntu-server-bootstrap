@@ -46,4 +46,16 @@ for required_text in \
   }
 done
 
+if sed -n '/^install_rocketchat()/,/^install_nextcloud()/p' "$installer" | rg -Fq -- '-f docker.yml'; then
+  echo 'Rocket.Chat must not include the incomplete docker.yml overlay.' >&2
+  exit 1
+fi
+
+for rocketchat_compose_file in compose.database.yml compose.yml compose.nats.yml; do
+  rg -Fq -- "-f $rocketchat_compose_file" "$installer" || {
+    echo "missing Rocket.Chat Compose file: $rocketchat_compose_file" >&2
+    exit 1
+  }
+done
+
 echo "static installer checks passed"

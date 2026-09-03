@@ -4,7 +4,7 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 umask 077
 
-SCRIPT_VERSION="1.4.4"
+SCRIPT_VERSION="1.4.5"
 INSTALL_ROOT="${UBUNTU_BOOTSTRAP_ROOT:-/opt/ubuntu-headless-bootstrap}"
 SERVICE_ROOT="$INSTALL_ROOT/services"
 STATE_ROOT="$INSTALL_ROOT/state"
@@ -517,8 +517,7 @@ install_rocketchat() {
   compose_config_and_up "$service_dir" \
     -f compose.database.yml \
     -f compose.yml \
-    -f compose.nats.yml \
-    -f docker.yml
+    -f compose.nats.yml
 }
 
 install_nextcloud() {
