@@ -4,12 +4,13 @@ set -Eeuo pipefail
 IFS=$'\n\t'
 umask 077
 
-SCRIPT_VERSION="1.4.6"
+SCRIPT_VERSION="1.5.0"
 INSTALL_ROOT="${UBUNTU_BOOTSTRAP_ROOT:-/opt/ubuntu-headless-bootstrap}"
 SERVICE_ROOT="$INSTALL_ROOT/services"
 STATE_ROOT="$INSTALL_ROOT/state"
 DRY_RUN=0
 PLAN_ONLY=0
+CLI_ONLY=0
 APT_UPDATED=0
 TARGET_USER="${SUDO_USER:-}"
 RUN_STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -20,6 +21,8 @@ Ubuntu Server Bootstrap
 
 Usage:
   sudo bash install.sh           Interactive installation
+  sudo bash install.sh --clis-only
+                                Install Codex CLI and Claude Code only
   bash install.sh --plan         Show the selection plan without changing files
   sudo bash install.sh --dry-run Print commands without changing the host
   bash install.sh --help         Show this help
@@ -33,6 +36,7 @@ while (($# > 0)); do
   case "$1" in
     --dry-run) DRY_RUN=1 ;;
     --plan) PLAN_ONLY=1 ;;
+    --clis-only) CLI_ONLY=1 ;;
     --help|-h) usage; exit 0 ;;
     *) printf 'Unknown argument: %s\n' "$1" >&2; usage >&2; exit 2 ;;
   esac
@@ -240,6 +244,37 @@ choose_target_user() {
   log "Using login user: $TARGET_USER"
 }
 
+run_as_target_user() {
+  if [[ "$TARGET_USER" == login-user-detected-at-install-time ]]; then
+    if ((DRY_RUN || PLAN_ONLY)); then
+      printf '+ (run as detected login user) '
+      printf '%q ' "$@"
+      printf '\n'
+      return 0
+    fi
+    die 'Could not run a user-level command because the target login user is unavailable.'
+  fi
+
+  local target_home
+  target_home="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
+  [[ -n "$target_home" && -d "$target_home" ]] || die "Could not find the home directory for $TARGET_USER."
+
+  if ((DRY_RUN || PLAN_ONLY)); then
+    printf '+ (runuser -u %q -- env HOME=%q USER=%q LOGNAME=%q ' \
+      "$TARGET_USER" "$target_home" "$TARGET_USER" "$TARGET_USER"
+    printf '%q ' "$@"
+    printf ')\n'
+    return 0
+  fi
+
+  command_exists runuser || die 'runuser is required for safe user-level CLI installation.'
+  runuser -u "$TARGET_USER" -- env \
+    HOME="$target_home" \
+    USER="$TARGET_USER" \
+    LOGNAME="$TARGET_USER" \
+    "$@"
+}
+
 apt_install() {
   if ((APT_UPDATED == 0)); then
     run apt-get update
@@ -300,6 +335,35 @@ install_gnome() {
 install_github_cli() {
   log 'Installing GitHub CLI and Git.'
   apt_install git gh
+}
+
+verify_target_cli() {
+  local cli_name="$1"
+  if ((DRY_RUN || PLAN_ONLY)); then
+    log "Would verify the $cli_name command for $TARGET_USER."
+    return 0
+  fi
+
+  local target_home
+  target_home="$(getent passwd "$TARGET_USER" | cut -d: -f6)"
+  run_as_target_user env PATH="$target_home/.local/bin:${PATH:-}" bash -c \
+    "command -v '$cli_name' >/dev/null 2>&1 && '$cli_name' --version >/dev/null 2>&1" \
+    || die "$cli_name was installed but could not be verified for $TARGET_USER."
+  log "Verified $cli_name for $TARGET_USER."
+}
+
+install_codex_cli() {
+  log 'Installing Codex CLI for the selected login user.'
+  apt_install ca-certificates curl
+  run_as_target_user bash -c 'set -o pipefail; curl -fsSL https://chatgpt.com/codex/install.sh | bash'
+  verify_target_cli codex
+}
+
+install_claude_cli() {
+  log 'Installing Claude Code CLI for the selected login user.'
+  apt_install ca-certificates curl
+  run_as_target_user bash -c 'set -o pipefail; curl -fsSL https://claude.ai/install.sh | bash'
+  verify_target_cli claude
 }
 
 configure_xfce_session() {
@@ -727,8 +791,11 @@ write_selection_state() {
   cat >"$STATE_ROOT/last-selection.env" <<EOF
 INSTALLER_VERSION=$SCRIPT_VERSION
 RUN_UTC=$RUN_STAMP
+MODE=$INSTALL_MODE
 DESKTOP=$DESKTOP_CHOICE
 GITHUB_CLI=$INSTALL_GITHUB_CLI
+CODEX_CLI=$INSTALL_CODEX_CLI
+CLAUDE_CLI=$INSTALL_CLAUDE_CLI
 XFCE=$INSTALL_XFCE
 GNOME=$INSTALL_GNOME
 XRDP=$INSTALL_XRDP
@@ -747,6 +814,8 @@ print_summary() {
   printf '\nSelected installation plan:\n'
   printf '  Desktop environment: %s\n' "$(desktop_label)"
   printf '  GitHub CLI (gh):    %s\n' "$INSTALL_GITHUB_CLI"
+  printf '  Codex CLI:          %s\n' "$INSTALL_CODEX_CLI"
+  printf '  Claude Code CLI:    %s\n' "$INSTALL_CLAUDE_CLI"
   printf '  XFCE desktop:       %s\n' "$INSTALL_XFCE"
   printf '  Ubuntu GNOME:       %s\n' "$INSTALL_GNOME"
   printf '  XRDP:                %s\n' "$INSTALL_XRDP"
@@ -771,12 +840,18 @@ main() {
   choose_target_user
 
   printf '\nUbuntu Server Bootstrap %s\n' "$SCRIPT_VERSION"
-  printf 'The installer will ask for each component. Existing data/configuration is preserved.\n\n'
+  if ((CLI_ONLY)); then
+    printf 'CLI-only mode will install only Codex CLI and Claude Code CLI.\n\n'
+  else
+    printf 'The installer will ask for each component. Existing data/configuration is preserved.\n\n'
+  fi
 
   INSTALL_XFCE=0
   INSTALL_GNOME=0
   DESKTOP_CHOICE='none'
   INSTALL_GITHUB_CLI=0
+  INSTALL_CODEX_CLI=0
+  INSTALL_CLAUDE_CLI=0
   INSTALL_XRDP=0
   INSTALL_DOCKER=0
   INSTALL_SSH_UFW=0
@@ -786,27 +861,37 @@ main() {
   INSTALL_SHINOBI=0
   INSTALL_GUI_BOOT=0
   RDP_SOURCE_CIDR=''
+  INSTALL_MODE='interactive'
 
-  prompt_desktop_choice 3 'Choose the desktop environment'
-  prompt_yes_no 'Install GitHub CLI (gh)?' y && INSTALL_GITHUB_CLI=1 || true
-  prompt_yes_no 'Install XRDP remote desktop access?' n && INSTALL_XRDP=1 || true
-  prompt_yes_no 'Install Docker Engine and Docker Compose v2?' n && INSTALL_DOCKER=1 || true
-  prompt_yes_no 'Install OpenSSH server and UFW firewall basics?' n && INSTALL_SSH_UFW=1 || true
-  prompt_yes_no 'Install Rocket.Chat?' n && INSTALL_ROCKETCHAT=1 || true
-  prompt_yes_no 'Install Nextcloud?' n && INSTALL_NEXTCLOUD=1 || true
-  prompt_yes_no 'Install Frigate?' n && INSTALL_FRIGATE=1 || true
-  prompt_yes_no 'Install Shinobi?' n && INSTALL_SHINOBI=1 || true
-  prompt_yes_no 'Configure local graphical boot with the selected desktop?' n && INSTALL_GUI_BOOT=1 || true
+  if ((CLI_ONLY)); then
+    INSTALL_MODE='clis-only'
+    INSTALL_CODEX_CLI=1
+    INSTALL_CLAUDE_CLI=1
+    log 'CLI-only mode: installing Codex CLI and Claude Code CLI only.'
+  else
+    prompt_desktop_choice 3 'Choose the desktop environment'
+    prompt_yes_no 'Install GitHub CLI (gh)?' y && INSTALL_GITHUB_CLI=1 || true
+    prompt_yes_no 'Install Codex CLI?' y && INSTALL_CODEX_CLI=1 || true
+    prompt_yes_no 'Install Claude Code CLI?' y && INSTALL_CLAUDE_CLI=1 || true
+    prompt_yes_no 'Install XRDP remote desktop access?' n && INSTALL_XRDP=1 || true
+    prompt_yes_no 'Install Docker Engine and Docker Compose v2?' n && INSTALL_DOCKER=1 || true
+    prompt_yes_no 'Install OpenSSH server and UFW firewall basics?' n && INSTALL_SSH_UFW=1 || true
+    prompt_yes_no 'Install Rocket.Chat?' n && INSTALL_ROCKETCHAT=1 || true
+    prompt_yes_no 'Install Nextcloud?' n && INSTALL_NEXTCLOUD=1 || true
+    prompt_yes_no 'Install Frigate?' n && INSTALL_FRIGATE=1 || true
+    prompt_yes_no 'Install Shinobi?' n && INSTALL_SHINOBI=1 || true
+    prompt_yes_no 'Configure local graphical boot with the selected desktop?' n && INSTALL_GUI_BOOT=1 || true
+  fi
 
-  if ((INSTALL_XRDP)) && [[ "$DESKTOP_CHOICE" == none ]]; then
+  if (( ! CLI_ONLY && INSTALL_XRDP )) && [[ "$DESKTOP_CHOICE" == none ]]; then
     prompt_desktop_choice 1 'XRDP requires a desktop session. Choose the required desktop'
   fi
 
-  if ((INSTALL_GUI_BOOT)) && [[ "$DESKTOP_CHOICE" == none ]]; then
+  if (( ! CLI_ONLY && INSTALL_GUI_BOOT )) && [[ "$DESKTOP_CHOICE" == none ]]; then
     prompt_desktop_choice 1 'Local graphical boot requires a desktop. Choose the required desktop'
   fi
 
-  if any_application_selected && ((INSTALL_DOCKER == 0)); then
+  if (( ! CLI_ONLY )) && any_application_selected && ((INSTALL_DOCKER == 0)); then
     if prompt_yes_no 'Selected applications require Docker. Install Docker as a required dependency?' y; then
       INSTALL_DOCKER=1
     else
@@ -814,13 +899,13 @@ main() {
     fi
   fi
 
-  if ((INSTALL_XRDP && INSTALL_SSH_UFW)); then
+  if (( ! CLI_ONLY && INSTALL_XRDP && INSTALL_SSH_UFW )); then
     printf '\nXRDP firewall safety: enter the trusted source network in CIDR form, such as 192.168.1.0/24.\n'
     printf 'Leave this blank to install XRDP but keep port 3389 closed in UFW.\n'
     read -r -p 'Trusted XRDP source CIDR (blank = closed): ' RDP_SOURCE_CIDR || die 'Input ended while reading the RDP source CIDR.'
   fi
 
-  if ((INSTALL_ROCKETCHAT)) && [[ "$VERSION_ID" == 26.04* ]]; then
+  if (( ! CLI_ONLY && INSTALL_ROCKETCHAT )) && [[ "$VERSION_ID" == 26.04* ]]; then
     printf '\nWARNING: current Rocket.Chat documentation warns that bundled MongoDB 8.x may fail on Ubuntu 26.04.\n'
     if ! prompt_yes_no 'Continue with Rocket.Chat selection on this Ubuntu release?' n; then
       die 'Rocket.Chat selection cancelled due to the Ubuntu 26.04/MongoDB compatibility warning.'
@@ -828,20 +913,26 @@ main() {
   fi
 
   print_summary
-  prompt_yes_no 'Proceed with this plan?' n || { log 'Installation cancelled before host changes.'; exit 0; }
+  if (( ! CLI_ONLY )); then
+    prompt_yes_no 'Proceed with this plan?' n || { log 'Installation cancelled before host changes.'; exit 0; }
+  fi
 
-  if ! ((INSTALL_XFCE || INSTALL_GNOME || INSTALL_GITHUB_CLI || INSTALL_XRDP || INSTALL_DOCKER || INSTALL_SSH_UFW || INSTALL_ROCKETCHAT || INSTALL_NEXTCLOUD || INSTALL_FRIGATE || INSTALL_SHINOBI || INSTALL_GUI_BOOT)); then
+  if ! ((INSTALL_XFCE || INSTALL_GNOME || INSTALL_GITHUB_CLI || INSTALL_CODEX_CLI || INSTALL_CLAUDE_CLI || INSTALL_XRDP || INSTALL_DOCKER || INSTALL_SSH_UFW || INSTALL_ROCKETCHAT || INSTALL_NEXTCLOUD || INSTALL_FRIGATE || INSTALL_SHINOBI || INSTALL_GUI_BOOT)); then
     log 'No components were selected; no host changes will be made.'
     exit 0
   fi
 
-  prepare_service_root
+  if (( ! CLI_ONLY )); then
+    prepare_service_root
+  fi
   write_selection_state
 
   if ((INSTALL_XFCE)); then install_xfce; fi
   if ((INSTALL_GNOME)); then install_gnome; fi
   if ((INSTALL_GUI_BOOT)); then install_gui_boot; fi
   if ((INSTALL_GITHUB_CLI)); then install_github_cli; fi
+  if ((INSTALL_CODEX_CLI)); then install_codex_cli; fi
+  if ((INSTALL_CLAUDE_CLI)); then install_claude_cli; fi
   if ((INSTALL_XRDP)); then install_xrdp; fi
   if ((INSTALL_SSH_UFW)); then install_ssh_firewall; fi
   if ((INSTALL_DOCKER)); then install_docker; fi
@@ -852,6 +943,8 @@ main() {
 
   log "Bootstrap completed for selected components."
   log "Installer log: $LOG_FILE"
+  if ((INSTALL_CODEX_CLI)); then log 'Codex CLI installed for the selected login user.'; fi
+  if ((INSTALL_CLAUDE_CLI)); then log 'Claude Code CLI installed for the selected login user.'; fi
   if ((INSTALL_ROCKETCHAT)); then log 'Rocket.Chat: http://127.0.0.1:3000'; fi
   if ((INSTALL_NEXTCLOUD)); then log 'Nextcloud:   http://127.0.0.1:8081'; fi
   if ((INSTALL_SHINOBI)); then log 'Shinobi:     http://127.0.0.1:8080'; fi

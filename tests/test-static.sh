@@ -15,6 +15,14 @@ for required_text in \
   '3) No desktop' \
   'Install GitHub CLI (gh)?' \
   'apt_install git gh' \
+  'Install Codex CLI?' \
+  'Install Claude Code CLI?' \
+  '--clis-only' \
+  'run_as_target_user' \
+  'https://chatgpt.com/codex/install.sh' \
+  'curl -fsSL https://claude.ai/install.sh | bash' \
+  'CODEX_CLI=$INSTALL_CODEX_CLI' \
+  'CLAUDE_CLI=$INSTALL_CLAUDE_CLI' \
   'ubuntu-desktop-minimal' \
   'gdm3' \
   'Install XRDP remote desktop access?' \
@@ -40,11 +48,26 @@ for required_text in \
   'docker compose' \
   'run_in_dir "$service_dir" docker compose' \
   'config -q'; do
-  rg -Fq "$required_text" "$installer" || {
+  rg -Fq -- "$required_text" "$installer" || {
     echo "missing required installer marker: $required_text" >&2
     exit 1
   }
 done
+
+cli_only_block="$(sed -n '/^  if ((CLI_ONLY)); then/,/^  fi$/p' "$installer")"
+printf '%s\n' "$cli_only_block" | rg -Fq "INSTALL_CODEX_CLI=1" || {
+  echo 'CLI-only mode must select Codex CLI.' >&2
+  exit 1
+}
+printf '%s\n' "$cli_only_block" | rg -Fq "INSTALL_CLAUDE_CLI=1" || {
+  echo 'CLI-only mode must select Claude Code CLI.' >&2
+  exit 1
+}
+
+rg -Fq 'cd ~/ubuntu-server-bootstrap && git pull && sudo ./install.sh --clis-only' "$project_root/README.md" || {
+  echo 'missing documented one-line CLI-only command' >&2
+  exit 1
+}
 
 if sed -n '/^install_rocketchat()/,/^install_nextcloud()/p' "$installer" | rg -Fq -- '-f docker.yml'; then
   echo 'Rocket.Chat must not include the incomplete docker.yml overlay.' >&2

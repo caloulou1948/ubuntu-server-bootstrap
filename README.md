@@ -11,6 +11,8 @@ additional confirmation; they are never silently added.
 - Ubuntu version detection
 - Choose one desktop: standard Ubuntu GNOME, lightweight XFCE, or no desktop
 - GitHub CLI (`gh`) and Git
+- Codex CLI
+- Claude Code CLI
 - XRDP remote desktop access
 - Docker Engine and Docker Compose v2
 - OpenSSH and UFW basics
@@ -44,6 +46,19 @@ After that, the short repeat command is:
 sudo ~/ubuntu-server-bootstrap/install.sh
 ```
 
+To install only Codex CLI and Claude Code CLI on a server that already has the
+repository checkout, use this one line:
+
+```bash
+cd ~/ubuntu-server-bootstrap && git pull && sudo ./install.sh --clis-only
+```
+
+The normal installer also asks separately whether to install each CLI. The
+CLI installation is performed for the detected login user, not root. It does
+not perform account authentication. After installation, authenticate Codex
+with `codex --login`; the first `claude` command starts Claude Code's own login
+flow.
+
 The installer itself asks for a fixed Rocket.Chat release tag and preserves
 that selection in its local service configuration.
 
@@ -64,6 +79,10 @@ paths match the real run:
 ```bash
 sudo bash install.sh --dry-run
 ```
+
+`--clis-only` skips every other installer selection and installs only Codex CLI
+and Claude Code CLI. Both are installed for the detected login user with their
+official native installers; no `sudo npm` installation is used.
 
 ## Design and safety
 
