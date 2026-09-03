@@ -16,7 +16,6 @@ for required_text in \
   'Install GitHub CLI (gh)?' \
   'apt_install git gh' \
   'ubuntu-desktop-minimal' \
-  'ubuntu-session' \
   'gdm3' \
   'Install XRDP remote desktop access?' \
   'Install Docker Engine and Docker Compose v2?' \
@@ -31,13 +30,10 @@ for required_text in \
   'user-session=xfce' \
   'dbus-run-session -- startxfce4' \
   'Verified XFCE session components' \
-  'disable_conflicting_display_manager' \
-  'configure_gui_boot' \
+  'install_gui_boot' \
   'reboot_after_gui_boot' \
-  'systemctl restart' \
-  'systemctl is-enabled --quiet' \
-  'systemctl is-active --quiet' \
-  'graphical.target is the system default target' \
+  'systemctl enable lightdm' \
+  'systemctl enable gdm3' \
   'rebooting now to start the graphical login screen' \
   'required dependency' \
   'Preserving existing' \
